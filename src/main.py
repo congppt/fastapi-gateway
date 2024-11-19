@@ -1,8 +1,7 @@
 from contextlib import asynccontextmanager
-from http import HTTPMethod
 
 import uvicorn
-from fastapi import FastAPI, Request, status, HTTPException
+from fastapi import FastAPI, Request, status, HTTPException, Response
 from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 from httpx import AsyncClient, TimeoutException, ConnectError, HTTPStatusError
@@ -42,6 +41,13 @@ async def health_check():
 
 @app.api_route('/{service}/{path:path}', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 async def forward_request(service: str, path: str, request: Request):
+    """
+    Forward a request.
+    :param service: endpoint wrapper
+    :param path: path to endpoint
+    :param request: request object needs to forward
+    :return: response from endpoint
+    """
     if service not in SERVICES:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Service {service} not found")
     url = f"{SERVICES[service]}/{path}"
@@ -50,8 +56,12 @@ async def forward_request(service: str, path: str, request: Request):
     body = await request.body()
     client = AsyncClient()
     try:
-        response = await client.request(method=method, url=url, headers=headers, content=body, params=request.query_params)
-        return response
+        response = await client.request(method=method,
+                                        url=url,
+                                        headers=headers,
+                                        content=body,
+                                        params=request.query_params)
+        return Response(content=response.content, status_code=response.status_code, headers=response.headers)
     except ConnectError as ct:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(ct))
     except TimeoutException as te:
